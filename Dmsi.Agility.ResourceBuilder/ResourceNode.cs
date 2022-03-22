@@ -6,7 +6,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Drawing;
 
-namespace Dmsi.Agility.Resource.ResourceBuilder
+namespace Dmsi.Agility.Resource.MatchBuilder
 {
     public class ResourceNode
     {

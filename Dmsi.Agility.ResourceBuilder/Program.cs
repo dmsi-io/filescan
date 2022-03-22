@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 
-namespace Dmsi.Agility.Resource.ResourceBuilder
+namespace Dmsi.Agility.Resource.MatchBuilder
 {
     class Program
     {
@@ -18,11 +18,11 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 {
                     try
                     {
-                        Console.WriteLine("> Generating resx file . . .");
+                        Console.WriteLine("> Looking for match . . .");
                         
-                        ResourceDefinition def = new ResourceDefinition(args[0]);
+                        Matcher def = new Matcher(args[0]);
 
-                        _writer = File.CreateText("agilresx.log");
+                        _writer = File.CreateText("agilrgex.log");
 
                         def.LoadSucceeded += def_LoadSucceeded;
                         def.FileProcessed += def_FileProcessed;
@@ -52,12 +52,12 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 {
                     try
                     {
-                        Console.WriteLine("> Generating resx file . . .");
+                        Console.WriteLine("> LOoking for match . . .");
 
-                        ResourceDefinition def = new ResourceDefinition();
+                        Matcher def = new Matcher();
                         def.AddDirectory(new DirectoryInfo(args[1]));
 
-                        _writer = File.CreateText("agilresx.log");
+                        _writer = File.CreateText("agilrgex.log");
 
                         def.LoadSucceeded += def_LoadSucceeded;
                         def.FileProcessed += def_FileProcessed;
@@ -85,7 +85,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                     Console.WriteLine("> '" + args[1]  + "' not found.");
             }
             else
-                Console.WriteLine("> Wrong number of arguments passed. ex. agilresx [-d <directory>|<inputfile>] <outputfile>");
+                Console.WriteLine("> Wrong number of arguments passed. ex. agilrgex [-d <directory>|<inputfile>] <outputfile>");
         }
 
         private static void def_FileProcessed(object sender, FileProcessedEventArgs e)

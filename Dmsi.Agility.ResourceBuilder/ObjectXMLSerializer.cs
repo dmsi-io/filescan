@@ -5,7 +5,7 @@ using System.IO;				 // For reading/writing data to an XML file.
 using System.IO.IsolatedStorage; // For accessing user isolated data.
 using System.Collections.Generic;
 
-namespace Dmsi.Agility.Resource.ResourceBuilder
+namespace Dmsi.Agility.Resource.MatchBuilder
 {
     /// <summary>
     /// Serialization format types.

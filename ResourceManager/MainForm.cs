@@ -7,11 +7,11 @@ using System.IO;
 using System.Text;
 using System.Windows.Forms;
 
-namespace Dmsi.Agility.Resource.ResourceBuilder
+namespace Dmsi.Agility.Resource.MatchBuilder
 {
     public partial class MainForm : Form
     {
-        private ResourceDefinition _definition;
+        private Matcher _definition;
         private ListViewColumnSorter _lvwColumnSorter;
 
         public MainForm()
@@ -21,7 +21,6 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             // Create an instance of a ListView column sorter and assign it to the ListView control.
             _lvwColumnSorter = new ListViewColumnSorter();
             this.listView2.ListViewItemSorter = _lvwColumnSorter;
-            toolStripComboBox1.SelectedIndex = 0;
 
             Application.Idle += new EventHandler(Application_Idle);
         }
@@ -43,7 +42,9 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
             generateResxToolStripMenuItem.Enabled = _definition != null && !stopToolStripButton.Enabled;
             generateToolStripButton.Enabled = generateResxToolStripMenuItem.Enabled;
-            
+            cmdGo.Enabled = generateToolStripButton.Enabled;
+
+
             closeToolStripMenuItem.Enabled = _definition != null;
 
             deleteToolStripMenuItem.Enabled = listView1.SelectedItems.Count > 0;
@@ -52,17 +53,19 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            openFileDialog1.FileName = "*.agil";
-            openFileDialog1.Filter = "Definition files (*.agil)|*.agil|All files (*.*)|*.*";
+            openFileDialog1.FileName = "*.rgex";
+            openFileDialog1.Filter = "Definition files (*.rgex)|*.rgex|All files (*.*)|*.*";
             openFileDialog1.Multiselect = false;
 
             if (openFileDialog1.ShowDialog(this) == DialogResult.OK)
             {
                 try
                 {
-                    _definition = new ResourceDefinition(openFileDialog1.FileName);
-                    this.Text = Path.GetFileName(_definition.FileName) + " - Resource Manager";
+                    _definition = new Matcher(openFileDialog1.FileName);
+                    this.Text = Path.GetFileName(_definition.FileName) + " - File Scan";
                     toolStripStatusLabel1.Text = _definition.FileName;
+                    txtRegEx.Text = _definition.RegEx;
+                    firstMatchToolStripButton.Checked = _definition.FirstMatchOnly;
 
                     listView1.Items.Clear();
 
@@ -105,29 +108,35 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
         {
             closeToolStripMenuItem_Click(null, null);
 
-            _definition = new ResourceDefinition();
+            _definition = new Matcher();
             _definition.IsDirty = true;
-            this.Text = _definition.FileName + " - Resource Manager";
+            txtRegEx.Text = "";
+            firstMatchToolStripButton.Checked = true;
+            this.Text = _definition.FileName + " - File Scan";
             toolStripStatusLabel1.Text = _definition.FileName;
         }
 
         private void saveToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (_definition.FileName.Equals("untitled.agil", StringComparison.CurrentCultureIgnoreCase))
+            if (_definition.FileName.Equals("untitled.rgex", StringComparison.CurrentCultureIgnoreCase))
             {
                 saveFileDialog1.FileName = _definition.FileName;
 
                 if (saveFileDialog1.ShowDialog() == DialogResult.OK)
                 {
+                    _definition.FirstMatchOnly = firstMatchToolStripButton.Checked; 
+                    _definition.RegEx = txtRegEx.Text;
                     _definition.Save(saveFileDialog1.FileName);
-                    this.Text = _definition.FileName + " - Resource Manager";
+                    this.Text = _definition.FileName + " - File Scan";
                     toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
                 }
             }
             else
             {
+                _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
+                _definition.RegEx = txtRegEx.Text;
                 _definition.Save();
-                this.Text = _definition.FileName + " - Resource Manager";
+                this.Text = _definition.FileName + " - File Scan";
                 toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
             }
         }
@@ -282,13 +291,14 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
         {
             stopToolStripButton.Enabled = true;
 
-            _definition.Type = (ProcessType)Enum.Parse(typeof(ProcessType), toolStripComboBox1.Text);
             _definition.LoadFailed += _definition_LoadFailed;
             _definition.FileProcessed += _definition_FileProcessed;
             _definition.LoadSucceeded += _definition_LoadSucceeded;
             _definition.MessageGenerated += _definition_MessageGenerated;
 
-            richTextBox1.Text = "";
+            richTextBox1.Clear();
+            listView2.Items.Clear();
+            richTextBox2.Clear();
 
             _definition.Cancelled = false;
             backgroundWorker1.RunWorkerAsync();
@@ -306,7 +316,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
         private void _definition_LoadSucceeded(object sender, LoadSucceededEventArgs e)
         {
-            backgroundWorker1.ReportProgress(50, new ParseUserState() { Status = ParseState.Success, Name = e.Name, Source = e.Source, Message = $"{e.Source} - Successful" });
+            backgroundWorker1.ReportProgress(50, new ParseUserState() { Status = ParseState.Success, Name = e.Name, Source = e.Source, Message = $"{e.Source} - Scanned" });
         }
 
         private void _definition_LoadFailed(object sender, LoadFailedEventArgs e)
@@ -328,8 +338,9 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
+                _definition.RegEx = txtRegEx.Text;
                 _definition.Save(saveFileDialog1.FileName);
-                this.Text = _definition.FileName + " - Resource Manager";
+                this.Text = _definition.FileName + " - File Scan";
             }
         }
 
@@ -341,7 +352,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 _definition = null;
             }
 
-            this.Text = "Resource Manager";
+            this.Text = "File Scan";
             toolStripStatusLabel1.Text = "";
             listView1.Items.Clear();
         }
@@ -396,6 +407,8 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
         private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
         {
+            _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
+            _definition.RegEx = txtRegEx.Text;
             string location = _definition.ParseFiles();
             e.Result = location;
 
@@ -418,7 +431,15 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                     lvi.Tag = arg.Matches;
                     listView2.Items.Add(lvi);
                 }
-                else if (arg.Status != ParseState.Success)
+                else if (arg.Status == ParseState.Failed)
+                {
+                    StringBuilder text = new StringBuilder(richTextBox1.Text);
+                    text.Append($"{arg.Message}\r\n");
+                    richTextBox1.Text = text.ToString();
+                    richTextBox1.SelectionStart = richTextBox1.Text.Length;
+                    richTextBox1.ScrollToCaret();
+                } 
+                else if (arg.Status == ParseState.Message)
                 {
                     StringBuilder text = new StringBuilder(richTextBox1.Text);
                     text.Append($"{arg.Message}\r\n");
@@ -431,15 +452,13 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
         private void backgroundWorker1_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
-            if (!this.IsDisposed && !e.Cancelled)
-            {
-                _definition.LoadFailed -= _definition_LoadFailed;
-                _definition.FileProcessed -= _definition_FileProcessed;
-                _definition.LoadSucceeded -= _definition_LoadSucceeded;
-                _definition.MessageGenerated -= _definition_MessageGenerated;
+            _definition.LoadFailed -= _definition_LoadFailed;
+            _definition.FileProcessed -= _definition_FileProcessed;
+            _definition.LoadSucceeded -= _definition_LoadSucceeded;
+            _definition.MessageGenerated -= _definition_MessageGenerated;
 
+            if (!this.IsDisposed && !e.Cancelled)
                 MessageBox.Show(this, "Finished parsing files.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
 
             toolStripStatusLabel1.Text = _definition.FileName;
             stopToolStripButton.Enabled = false;
@@ -478,6 +497,9 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 foreach(string s in result)
                 {
                     richTextBox2.AppendText($"{s}\r\n");
+
+                    if(result.Count > 1)
+                        richTextBox2.AppendText("----------\r\n");
                 }
             }
 

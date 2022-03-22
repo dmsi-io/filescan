@@ -4,12 +4,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Windows.Forms;
 using System.Xml.Serialization;
 
-namespace Dmsi.Agility.Resource.ResourceBuilder
+namespace Dmsi.Agility.Resource.MatchBuilder
 {
-    [XmlRootAttribute("ResourceDefinition", Namespace = "", IsNullable = false)]
-    public class ResourceDefinition
+    [XmlRootAttribute("Matcher", Namespace = "", IsNullable = false)]
+    public class Matcher
     {
         [XmlArray("Nodes"), XmlArrayItem("ResourceNode", typeof(ResourceNode))]
         public ArrayList Nodes
@@ -39,12 +40,17 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             set;
         }
 
-        [XmlIgnoreAttribute]
-        public ProcessType Type
+        public string RegEx
         {
             get;
             set;
         }
+
+        public bool FirstMatchOnly
+        {
+            get;
+            set;
+        } = true;
 
         public event EventHandler<LoadFailedEventArgs> LoadFailed;
         public event EventHandler<FileProcessedEventArgs> FileProcessed;
@@ -62,14 +68,14 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             get{return "cls,w,p,i,t";}
         }
 
-        public ResourceDefinition()
+        public Matcher()
         {
             IsDirty = false;
-            FileName = "untitled.agil";
+            FileName = "untitled.rgex";
             Nodes = new ArrayList();
         }
 
-        public ResourceDefinition(string fileName)
+        public Matcher(string fileName)
         {
             Load(fileName);
         }
@@ -90,17 +96,19 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             {
                 IsDirty = false;
                 FileName = fileName;
-                ObjectXMLSerializer<ResourceDefinition> serializer = new ObjectXMLSerializer<ResourceDefinition>();
-                ResourceDefinition def = serializer.Load(fileName);
+                ObjectXMLSerializer<Matcher> serializer = new ObjectXMLSerializer<Matcher>();
+                Matcher def = serializer.Load(fileName);
                 Nodes = def.Nodes;
+                RegEx = def.RegEx;
+                FirstMatchOnly = def.FirstMatchOnly;    
             }
             catch { }
         }
 
-        public static ResourceDefinition LoadFromFile(string fileName)
+        public static Matcher LoadFromFile(string fileName)
         {
-            ObjectXMLSerializer<ResourceDefinition> serializer = new ObjectXMLSerializer<ResourceDefinition>();
-            ResourceDefinition def = serializer.Load(fileName);
+            ObjectXMLSerializer<Matcher> serializer = new ObjectXMLSerializer<Matcher>();
+            Matcher def = serializer.Load(fileName);
             def.FileName = fileName;
             def.IsDirty = false;
 
@@ -117,7 +125,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             if (fileName == null || fileName == "")
                 throw new Exception("Filename must be specified.");
 
-            ObjectXMLSerializer<ResourceDefinition> serializer = new ObjectXMLSerializer<ResourceDefinition>();
+            ObjectXMLSerializer<Matcher> serializer = new ObjectXMLSerializer<Matcher>();
             serializer.Save(this, fileName);
             IsDirty = false;
             FileName = Path.GetFileName(fileName);
@@ -189,13 +197,14 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
         /// <returns></returns>
         public string ParseFiles(string outputFileName)
         {
+            _numScanned = 0;
+            _numMatches = 0;
             Literal.Clear();
 
             if (outputFileName == null || outputFileName == "")
                 throw new Exception("Filename must be specified.");
 
-            string outputPath = "";
-            outputPath = Path.ChangeExtension(outputFileName, "txt");
+            string outputPath = Path.ChangeExtension(outputFileName, "txt");
             _nameValuePairs.Clear();
 
             // Generate the listing
@@ -207,15 +216,16 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 if (node.IsFolder)
                     GetFiles(node.Name, node.Value);
                 else
-                    CheckForLiteral(node.Name, node.Value);
+                    CheckForQueryWithFunctionCall(node.Name, node.Value);
             }
 
-            MessageGeneratedEventArgs args = new MessageGeneratedEventArgs();
-            args.Text = $"SCANNED: {_numScanned} files";
-            MessageGenerated?.Invoke(this, args);
-            args.Text = $"WITH LITERAL: {_numMatches} files";
-            MessageGenerated?.Invoke(this, args);
+            NotifyFileCount();
+            outputPath = CreateResultFiles(outputPath);
+            return Path.GetFullPath(outputPath);
+        }
 
+        private string CreateResultFiles(string outputPath)
+        {
             if (!Cancelled)
             {
                 StreamWriter writer = File.CreateText(outputPath);
@@ -224,7 +234,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 {
                     writer.WriteLine($"{entry.Key}");
                     // List<string> result = (List<string>)entry.Value;
-                    
+
                     // for(int i=0; i<result.Count; i++)
                     // {
                     //    writer.WriteLine($"  {result[i]}");
@@ -236,7 +246,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 writer.Dispose();
 
                 string file = Path.GetFileNameWithoutExtension(outputPath);
-                outputPath = outputPath.Replace(file, file + "-literals");
+                outputPath = outputPath.Replace(file, file + "-matches");
                 writer = File.CreateText(outputPath);
 
                 foreach (string s in Literal)
@@ -249,7 +259,16 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 writer.Dispose();
             }
 
-            return Path.GetFullPath(outputPath);
+            return outputPath;
+        }
+
+        private void NotifyFileCount()
+        {
+            MessageGeneratedEventArgs args = new MessageGeneratedEventArgs();
+            args.Text = $"SCANNED: {_numScanned} files";
+            MessageGenerated?.Invoke(this, args);
+            args.Text = $"WITH LITERAL: {_numMatches} files";
+            MessageGenerated?.Invoke(this, args);
         }
 
         private void GetFiles(string key, string path)
@@ -263,16 +282,19 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 if (Cancelled)
                     break;
 
-                CheckForLiteral(Path.GetFileNameWithoutExtension(file), file);
+                CheckForQueryWithFunctionCall(Path.GetFileNameWithoutExtension(file), file);
             }
 
             foreach (string dir in Directory.GetDirectories(path))
             {
+                if (Cancelled)
+                    break; 
+                
                 GetFiles(key, dir);
             }
         }
 
-        private void CheckForLiteral(string name, string fileName)
+        private void CheckForQueryWithFunctionCall(string name, string fileName)
         {
             if (!NameValuePairContains(name) && File.Exists(fileName))
             {
@@ -332,18 +354,19 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             List<string> result = new List<string>();
             string allText = File.ReadAllText(fileName);
 
-            Regex rx2 = new Regex(@"(FOR FIRST|FOR EACH|FIND FIRST|FIND LAST) +((?!:|NO-LOCK\.|NO-ERROR\.|CASE|RUN|DO|END|FOR|EACH|FIND|FIRST|LAST|VARIABLE|DEFINE|ASSIGN).|\n)*?(INT|INTEGER|DEC|DECIMAL|LOG|LOGICAL) *\((.|\n)*?(\.|:)", RegexOptions.IgnoreCase);
+            Regex rx2 = new Regex(RegEx, RegexOptions.IgnoreCase);
             MatchCollection matches = rx2.Matches(allText);
 
             if (matches.Count > 0)
             {
-                result.Add($"{name}");
-
                 foreach (Match match in matches)
                 {
                     var s = match.Value;
+                    result.Add($"{s}");
                     Literal.Add($"{name},{s}");
-                    break;
+
+                    if(FirstMatchOnly)
+                        break;
                 }
             }
 
@@ -397,11 +420,5 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             get;
             set;
         }
-    }
-    public enum ProcessType
-    {
-        All,
-        String,
-        Numeric
     }
 }
