@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
 
 namespace Dmsi.Agility.Resource.ResourceBuilder
@@ -9,10 +12,16 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
     public partial class MainForm : Form
     {
         private ResourceDefinition _definition;
+        private ListViewColumnSorter _lvwColumnSorter;
 
         public MainForm()
         {
             InitializeComponent();
+
+            // Create an instance of a ListView column sorter and assign it to the ListView control.
+            _lvwColumnSorter = new ListViewColumnSorter();
+            this.listView2.ListViewItemSorter = _lvwColumnSorter;
+            toolStripComboBox1.SelectedIndex = 0;
 
             Application.Idle += new EventHandler(Application_Idle);
         }
@@ -111,12 +120,14 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 if (saveFileDialog1.ShowDialog() == DialogResult.OK)
                 {
                     _definition.Save(saveFileDialog1.FileName);
+                    this.Text = _definition.FileName + " - Resource Manager";
                     toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
                 }
             }
             else
             {
                 _definition.Save();
+                this.Text = _definition.FileName + " - Resource Manager";
                 toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
             }
         }
@@ -158,7 +169,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                             }
                             catch
                             {
-                                MessageBox.Show(this, "Unable to load '" + node.Name + "'.\n\nVerify that the image is not corrupted,\nor the image has the wrong extension. ", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show(this, "Unable to load '" + node.Name + "'.\n\nVerify that the file is not corrupted. ", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             }                            
                         }
                     }
@@ -271,9 +282,11 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
         {
             stopToolStripButton.Enabled = true;
 
+            _definition.Type = (ProcessType)Enum.Parse(typeof(ProcessType), toolStripComboBox1.Text);
             _definition.LoadFailed += _definition_LoadFailed;
             _definition.FileProcessed += _definition_FileProcessed;
             _definition.LoadSucceeded += _definition_LoadSucceeded;
+            _definition.MessageGenerated += _definition_MessageGenerated;
 
             richTextBox1.Text = "";
 
@@ -281,9 +294,14 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             backgroundWorker1.RunWorkerAsync();
         }
 
+        private void _definition_MessageGenerated(object sender, MessageGeneratedEventArgs e)
+        {
+            backgroundWorker1.ReportProgress(50, new ParseUserState() { Status = ParseState.Message, Message = e.Text });
+        }
+
         private void _definition_FileProcessed(object sender, FileProcessedEventArgs e)
         {
-            backgroundWorker1.ReportProgress(50, new ParseUserState() { Status = ParseState.Processed, Name = e.Name, Source = e.Source });
+            backgroundWorker1.ReportProgress(50, new ParseUserState() { Status = ParseState.Processed, Name = e.Name, Source = e.Source, Matches = e.Matches });
         }
 
         private void _definition_LoadSucceeded(object sender, LoadSucceededEventArgs e)
@@ -311,6 +329,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
                 _definition.Save(saveFileDialog1.FileName);
+                this.Text = _definition.FileName + " - Resource Manager";
             }
         }
 
@@ -392,9 +411,21 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 toolStripStatusLabel1.Text = arg.Source;
 
                 if (arg.Status == ParseState.Processed)
-                    richTextBox2.AppendText("- " + arg.Name + " - " + arg.Source + "\r\n");
-                else
-                    richTextBox1.AppendText("- " + arg.Message + "\r\n");              
+                {
+                    var i = listView2.Items.Count;
+                    ListViewItem lvi = new ListViewItem(arg.Name, i);
+                    lvi.SubItems.Add(arg.Source);
+                    lvi.Tag = arg.Matches;
+                    listView2.Items.Add(lvi);
+                }
+                else if (arg.Status != ParseState.Success)
+                {
+                    StringBuilder text = new StringBuilder(richTextBox1.Text);
+                    text.Append($"{arg.Message}\r\n");
+                    richTextBox1.Text = text.ToString();
+                    richTextBox1.SelectionStart = richTextBox1.Text.Length;
+                    richTextBox1.ScrollToCaret();
+                }
             }
         }
 
@@ -405,6 +436,7 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 _definition.LoadFailed -= _definition_LoadFailed;
                 _definition.FileProcessed -= _definition_FileProcessed;
                 _definition.LoadSucceeded -= _definition_LoadSucceeded;
+                _definition.MessageGenerated -= _definition_MessageGenerated;
 
                 MessageBox.Show(this, "Finished parsing files.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -433,6 +465,50 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
             _definition.Cancelled = true;
         }
+
+        private void listView2_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ListView.SelectedListViewItemCollection items = listView2.SelectedItems;
+
+            foreach (ListViewItem item in items)
+            {
+                richTextBox2.Clear();
+
+                List<string> result = (List<string>)item.Tag;
+                foreach(string s in result)
+                {
+                    richTextBox2.AppendText($"{s}\r\n");
+                }
+            }
+
+
+        }
+
+        private void listView2_ColumnClick(object sender, ColumnClickEventArgs e)
+        {
+            // Determine if clicked column is already the column that is being sorted.
+            if (e.Column == _lvwColumnSorter.SortColumn)
+            {
+                // Reverse the current sort direction for this column.
+                if (_lvwColumnSorter.Order == SortOrder.Ascending)
+                {
+                    _lvwColumnSorter.Order = SortOrder.Descending;
+                }
+                else
+                {
+                    _lvwColumnSorter.Order = SortOrder.Ascending;
+                }
+            }
+            else
+            {
+                // Set the column number that is to be sorted; default to ascending.
+                _lvwColumnSorter.SortColumn = e.Column;
+                _lvwColumnSorter.Order = SortOrder.Ascending;
+            }
+
+            // Perform the sort with these new sort options.
+            this.listView2.Sort();
+        }
     }
     public class ParseUserState
     {
@@ -458,13 +534,128 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             get;
             set;
         }
+
+        public List<string> Matches
+        {
+            get;
+            set;
+        }
     }
 
     public enum ParseState
     {
         Failed,
         Success,
-        Processed
+        Processed,
+        Message
     }
 
+    /// <summary>
+    /// This class is an implementation of the 'IComparer' interface.
+    /// </summary>
+    public class ListViewColumnSorter : IComparer
+    {
+        /// <summary>
+        /// Specifies the column to be sorted
+        /// </summary>
+        private int ColumnToSort;
+        /// <summary>
+        /// Specifies the order in which to sort (i.e. 'Ascending').
+        /// </summary>
+        private SortOrder OrderOfSort;
+        /// <summary>
+        /// Case insensitive comparer object
+        /// </summary>
+        private CaseInsensitiveComparer ObjectCompare;
+
+        /// <summary>
+        /// Class constructor.  Initializes various elements
+        /// </summary>
+        public ListViewColumnSorter()
+        {
+            // Initialize the column to '0'
+            ColumnToSort = 0;
+
+            // Initialize the sort order to 'none'
+            OrderOfSort = SortOrder.None;
+
+            // Initialize the CaseInsensitiveComparer object
+            ObjectCompare = new CaseInsensitiveComparer();
+        }
+
+        /// <summary>
+        /// This method is inherited from the IComparer interface.  It compares the two objects passed using a case insensitive comparison.
+        /// </summary>
+        /// <param name="x">First object to be compared</param>
+        /// <param name="y">Second object to be compared</param>
+        /// <returns>The result of the comparison. "0" if equal, negative if 'x' is less than 'y' and positive if 'x' is greater than 'y'</returns>
+        public int Compare(object x, object y)
+        {
+            int compareResult;
+            ListViewItem listviewX, listviewY;
+
+            // Cast the objects to be compared to ListViewItem objects
+            listviewX = (ListViewItem)x;
+            listviewY = (ListViewItem)y;
+
+            decimal num = 0;
+            if (decimal.TryParse(listviewX.SubItems[ColumnToSort].Text, out num))
+            {
+                compareResult = decimal.Compare(num, Convert.ToDecimal(listviewY.SubItems[ColumnToSort].Text));
+            }
+            else
+            {
+                // Compare the two items
+                compareResult = ObjectCompare.Compare(listviewX.SubItems[ColumnToSort].Text, listviewY.SubItems[ColumnToSort].Text);
+            }
+
+            // Calculate correct return value based on object comparison
+            if (OrderOfSort == SortOrder.Ascending)
+            {
+                // Ascending sort is selected, return normal result of compare operation
+                return compareResult;
+            }
+            else if (OrderOfSort == SortOrder.Descending)
+            {
+                // Descending sort is selected, return negative result of compare operation
+                return (-compareResult);
+            }
+            else
+            {
+                // Return '0' to indicate they are equal
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the number of the column to which to apply the sorting operation (Defaults to '0').
+        /// </summary>
+        public int SortColumn
+        {
+            set
+            {
+                ColumnToSort = value;
+            }
+            get
+            {
+                return ColumnToSort;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the order of sorting to apply (for example, 'Ascending' or 'Descending').
+        /// </summary>
+        public SortOrder Order
+        {
+            set
+            {
+                OrderOfSort = value;
+            }
+            get
+            {
+                return OrderOfSort;
+            }
+        }
+
+    }
 }

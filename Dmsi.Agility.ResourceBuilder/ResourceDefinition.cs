@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Resources;
+using System.Text.RegularExpressions;
 using System.Xml.Serialization;
 
 namespace Dmsi.Agility.Resource.ResourceBuilder
@@ -40,12 +39,21 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             set;
         }
 
+        [XmlIgnoreAttribute]
+        public ProcessType Type
+        {
+            get;
+            set;
+        }
+
         public event EventHandler<LoadFailedEventArgs> LoadFailed;
         public event EventHandler<FileProcessedEventArgs> FileProcessed;
         public event EventHandler<LoadSucceededEventArgs> LoadSucceeded;
+        public event EventHandler<MessageGeneratedEventArgs> MessageGenerated;
 
         private Dictionary<string, object> _nameValuePairs = new Dictionary<string,object>();
-            
+        private List<string> Literal = new List<string>();
+        
         /// <summary>
         /// Comma seaparated list of desired file extension
         /// </summary>
@@ -78,11 +86,15 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
 
         private void Load(string fileName)
         {
-            IsDirty = false;
-            FileName = fileName;
-            ObjectXMLSerializer<ResourceDefinition> serializer = new ObjectXMLSerializer<ResourceDefinition>();
-            ResourceDefinition def = serializer.Load(fileName);
-            Nodes = def.Nodes;
+            try
+            {
+                IsDirty = false;
+                FileName = fileName;
+                ObjectXMLSerializer<ResourceDefinition> serializer = new ObjectXMLSerializer<ResourceDefinition>();
+                ResourceDefinition def = serializer.Load(fileName);
+                Nodes = def.Nodes;
+            }
+            catch { }
         }
 
         public static ResourceDefinition LoadFromFile(string fileName)
@@ -108,8 +120,10 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             ObjectXMLSerializer<ResourceDefinition> serializer = new ObjectXMLSerializer<ResourceDefinition>();
             serializer.Save(this, fileName);
             IsDirty = false;
+            FileName = Path.GetFileName(fileName);
         }
-        
+
+        private int _numScanned, _numMatches = 0;
 
         public bool Contains(string name)
         {
@@ -175,6 +189,8 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
         /// <returns></returns>
         public string ParseFiles(string outputFileName)
         {
+            Literal.Clear();
+
             if (outputFileName == null || outputFileName == "")
                 throw new Exception("Filename must be specified.");
 
@@ -194,13 +210,38 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                     CheckForLiteral(node.Name, node.Value);
             }
 
+            MessageGeneratedEventArgs args = new MessageGeneratedEventArgs();
+            args.Text = $"SCANNED: {_numScanned} files";
+            MessageGenerated?.Invoke(this, args);
+            args.Text = $"WITH LITERAL: {_numMatches} files";
+            MessageGenerated?.Invoke(this, args);
+
             if (!Cancelled)
             {
                 StreamWriter writer = File.CreateText(outputPath);
 
                 foreach (KeyValuePair<string, object> entry in _nameValuePairs)
                 {
-                    writer.WriteLine($"{entry.Value}");
+                    writer.WriteLine($"{entry.Key}");
+                    // List<string> result = (List<string>)entry.Value;
+                    
+                    // for(int i=0; i<result.Count; i++)
+                    // {
+                    //    writer.WriteLine($"  {result[i]}");
+                    // }
+                }
+
+                writer.Flush();
+                writer.Close();
+                writer.Dispose();
+
+                string file = Path.GetFileNameWithoutExtension(outputPath);
+                outputPath = outputPath.Replace(file, file + "-literals");
+                writer = File.CreateText(outputPath);
+
+                foreach (string s in Literal)
+                {
+                    writer.WriteLine(s);
                 }
 
                 writer.Flush();
@@ -237,19 +278,26 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             {
                 try
                 {
-                    FileProcessedEventArgs args = new FileProcessedEventArgs();
-                    args.Name = name;
-                    args.Source = fileName;
+                    List<string> result = HasFunctionCallInQuery(fileName);
 
-                    FileProcessed?.Invoke(this, args);
+                    if (result.Count > 0)
+                    { 
+                        FileProcessedEventArgs args = new FileProcessedEventArgs();
+                        args.Name = name;
+                        args.Source = fileName;
+                        args.Matches = result;
+                        FileProcessed?.Invoke(this, args);
 
-                    _nameValuePairs.Add(name, fileName);
+                        _nameValuePairs.Add(fileName, result);
+                        _numMatches++;
+                    }
 
                     LoadSucceededEventArgs args2 = new LoadSucceededEventArgs();
                     args2.Name = name;
                     args2.Source = fileName;
-
                     LoadSucceeded?.Invoke(this, args2);
+
+                    _numScanned++;
                 }
                 catch (Exception e)
                 {
@@ -257,7 +305,6 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                     args.Name = name;
                     args.Error = e.Message;
                     args.Source = fileName;
-
                     LoadFailed?.Invoke(this, args);
                 }
             }
@@ -267,7 +314,6 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 args.Name = name;
                 args.Error = "Duplicate key.";
                 args.Source = fileName;
-
                 LoadFailed?.Invoke(this, args);
             }
             else if (!File.Exists(fileName))
@@ -276,26 +322,38 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
                 args.Name = name;
                 args.Error = "File not found.";
                 args.Source = fileName;
-
                 LoadFailed?.Invoke(this, args);
             }
         }
+
+        private List<string> HasFunctionCallInQuery(string fileName)
+        {
+            var name = Path.GetFileName(fileName);
+            List<string> result = new List<string>();
+            string allText = File.ReadAllText(fileName);
+
+            Regex rx2 = new Regex(@"(FOR FIRST|FOR EACH|FIND FIRST|FIND LAST) +((?!:|NO-LOCK\.|NO-ERROR\.|CASE|RUN|DO|END|FOR|EACH|FIND|FIRST|LAST|VARIABLE|DEFINE|ASSIGN).|\n)*?(INT|INTEGER|DEC|DECIMAL|LOG|LOGICAL) *\((.|\n)*?(\.|:)", RegexOptions.IgnoreCase);
+            MatchCollection matches = rx2.Matches(allText);
+
+            if (matches.Count > 0)
+            {
+                result.Add($"{name}");
+
+                foreach (Match match in matches)
+                {
+                    var s = match.Value;
+                    Literal.Add($"{name},{s}");
+                    break;
+                }
+            }
+
+
+            return result;
+        }
     }
 
-    public class LoadFailedEventArgs: EventArgs
+    public class LoadFailedEventArgs: FileNameEventArgs
     {
-        public string Name
-        {
-            get;
-            set;
-        }
-
-        public string Source
-        {
-            get;
-            set;
-        }
-
         public string Error
         {
             get;
@@ -303,7 +361,30 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
         }
     }
 
-    public class LoadSucceededEventArgs: EventArgs
+    public class LoadSucceededEventArgs: FileNameEventArgs
+    {
+
+    }
+
+    public class FileProcessedEventArgs : FileNameEventArgs
+    {
+        public List<string> Matches
+        {
+            get;
+            set;
+        }
+    }
+
+    public class MessageGeneratedEventArgs : EventArgs
+    {
+        public string Text
+        {
+            get;
+            set;
+        }
+    }
+
+    public class FileNameEventArgs : EventArgs
     {
         public string Name
         {
@@ -317,19 +398,10 @@ namespace Dmsi.Agility.Resource.ResourceBuilder
             set;
         }
     }
-
-    public class FileProcessedEventArgs : EventArgs
+    public enum ProcessType
     {
-        public string Name
-        {
-            get;
-            set;
-        }
-
-        public string Source
-        {
-            get;
-            set;
-        }
+        All,
+        String,
+        Numeric
     }
 }
