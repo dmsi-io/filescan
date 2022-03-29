@@ -91,6 +91,7 @@
             this.generateToolStripButton = new System.Windows.Forms.ToolStripButton();
             this.stopToolStripButton = new System.Windows.Forms.ToolStripButton();
             this.firstMatchToolStripButton = new System.Windows.Forms.ToolStripButton();
+            this.surroundTextToolStripButton = new System.Windows.Forms.ToolStripButton();
             this.panel4 = new System.Windows.Forms.Panel();
             this.txtRegEx = new System.Windows.Forms.TextBox();
             this.cmdGo = new System.Windows.Forms.Button();
@@ -591,7 +592,8 @@
             this.toolStripSeparator6,
             this.generateToolStripButton,
             this.stopToolStripButton,
-            this.firstMatchToolStripButton});
+            this.firstMatchToolStripButton,
+            this.surroundTextToolStripButton});
             this.toolStrip1.Location = new System.Drawing.Point(0, 24);
             this.toolStrip1.Name = "toolStrip1";
             this.toolStrip1.Size = new System.Drawing.Size(741, 25);
@@ -680,6 +682,18 @@
             this.firstMatchToolStripButton.Name = "firstMatchToolStripButton";
             this.firstMatchToolStripButton.Size = new System.Drawing.Size(98, 22);
             this.firstMatchToolStripButton.Text = "First Match Only";
+            this.firstMatchToolStripButton.Click += new System.EventHandler(this.firstMatchToolStripButton_Click);
+            // 
+            // surroundTextToolStripButton
+            // 
+            this.surroundTextToolStripButton.CheckOnClick = true;
+            this.surroundTextToolStripButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.surroundTextToolStripButton.Image = ((System.Drawing.Image)(resources.GetObject("surroundTextToolStripButton.Image")));
+            this.surroundTextToolStripButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.surroundTextToolStripButton.Name = "surroundTextToolStripButton";
+            this.surroundTextToolStripButton.Size = new System.Drawing.Size(84, 22);
+            this.surroundTextToolStripButton.Text = "Surround Text";
+            this.surroundTextToolStripButton.Click += new System.EventHandler(this.surroundTextToolStripButton_Click);
             // 
             // panel4
             // 
@@ -728,6 +742,7 @@
             this.Name = "MainForm";
             this.Text = "File Scan";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
+            this.Load += new System.EventHandler(this.MainForm_Load);
             this.splitContainer1.Panel1.ResumeLayout(false);
             this.splitContainer1.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).EndInit();
@@ -822,6 +837,7 @@
         private System.Windows.Forms.TextBox txtRegEx;
         private System.Windows.Forms.Button cmdGo;
         private System.Windows.Forms.ToolStripButton firstMatchToolStripButton;
+        private System.Windows.Forms.ToolStripButton surroundTextToolStripButton;
     }
 }
 

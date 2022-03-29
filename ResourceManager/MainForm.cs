@@ -66,6 +66,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                     toolStripStatusLabel1.Text = _definition.FileName;
                     txtRegEx.Text = _definition.RegEx;
                     firstMatchToolStripButton.Checked = _definition.FirstMatchOnly;
+                    surroundTextToolStripButton.Checked = _definition.IncludeSurroundingText;
 
                     listView1.Items.Clear();
 
@@ -123,22 +124,20 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                 saveFileDialog1.FileName = _definition.FileName;
 
                 if (saveFileDialog1.ShowDialog() == DialogResult.OK)
-                {
-                    _definition.FirstMatchOnly = firstMatchToolStripButton.Checked; 
-                    _definition.RegEx = txtRegEx.Text;
-                    _definition.Save(saveFileDialog1.FileName);
-                    this.Text = _definition.FileName + " - File Scan";
-                    toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
-                }
+                    SaveDefinition(saveFileDialog1.FileName);
             }
             else
-            {
-                _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
-                _definition.RegEx = txtRegEx.Text;
-                _definition.Save();
-                this.Text = _definition.FileName + " - File Scan";
-                toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
-            }
+                SaveDefinition(_definition.FileName);
+        }
+
+        private void SaveDefinition(string fileName)
+        {
+            _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
+            _definition.IncludeSurroundingText = firstMatchToolStripButton.Checked;
+            _definition.RegEx = txtRegEx.Text;
+            _definition.Save(fileName);
+            this.Text = _definition.FileName + " - File Scan";
+            toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
         }
 
         private void importFilesToolStripMenuItem_Click(object sender, EventArgs e)
@@ -339,6 +338,8 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
                 _definition.RegEx = txtRegEx.Text;
+                _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
+                _definition.IncludeSurroundingText = firstMatchToolStripButton.Checked; 
                 _definition.Save(saveFileDialog1.FileName);
                 this.Text = _definition.FileName + " - File Scan";
             }
@@ -408,6 +409,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
         private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
         {
             _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
+            _definition.IncludeSurroundingText = surroundTextToolStripButton.Checked;
             _definition.RegEx = txtRegEx.Text;
             string location = _definition.ParseFiles();
             e.Result = location;
@@ -530,6 +532,21 @@ namespace Dmsi.Agility.Resource.MatchBuilder
 
             // Perform the sort with these new sort options.
             this.listView2.Sort();
+        }
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void firstMatchToolStripButton_Click(object sender, EventArgs e)
+        {
+            _definition.IsDirty = true;
+        }
+
+        private void surroundTextToolStripButton_Click(object sender, EventArgs e)
+        {
+            _definition.IsDirty = true;
         }
     }
     public class ParseUserState

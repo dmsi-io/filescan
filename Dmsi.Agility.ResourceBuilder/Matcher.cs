@@ -68,6 +68,8 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             get{return "cls,w,p,i,t";}
         }
 
+        public bool IncludeSurroundingText { get; set; } = false;
+
         public Matcher()
         {
             IsDirty = false;
@@ -100,7 +102,8 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                 Matcher def = serializer.Load(fileName);
                 Nodes = def.Nodes;
                 RegEx = def.RegEx;
-                FirstMatchOnly = def.FirstMatchOnly;    
+                FirstMatchOnly = def.FirstMatchOnly;   
+                IncludeSurroundingText = def.IncludeSurroundingText;
             }
             catch { }
         }
@@ -128,7 +131,6 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             ObjectXMLSerializer<Matcher> serializer = new ObjectXMLSerializer<Matcher>();
             serializer.Save(this, fileName);
             IsDirty = false;
-            FileName = Path.GetFileName(fileName);
         }
 
         private int _numScanned, _numMatches = 0;
@@ -267,7 +269,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             MessageGeneratedEventArgs args = new MessageGeneratedEventArgs();
             args.Text = $"SCANNED: {_numScanned} files";
             MessageGenerated?.Invoke(this, args);
-            args.Text = $"WITH LITERAL: {_numMatches} files";
+            args.Text = $"MATCHED: {_numMatches} files";
             MessageGenerated?.Invoke(this, args);
         }
 
@@ -362,6 +364,27 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                 foreach (Match match in matches)
                 {
                     var s = match.Value;
+
+                    if (IncludeSurroundingText)
+                    {
+                        var i = match.Index;
+                        var start = 0; 
+                        var len = s.Length + 100;
+
+                        if (i > 100)
+                        {
+                            start = i - 100;
+                            len += 100;
+                        }
+                        else
+                            len += i;
+                        
+                        if (len > allText.Length - start) 
+                            len = allText.Length - start;
+                        
+                        s = allText.Substring(start, len);
+                    }
+
                     result.Add($"{s}");
                     Literal.Add($"{name},{s}");
 
