@@ -52,11 +52,18 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             set;
         } = true;
 
+        public int SurroundText
+        { 
+            get; 
+            set; 
+        } = 100;
+
         public event EventHandler<LoadFailedEventArgs> LoadFailed;
         public event EventHandler<FileProcessedEventArgs> FileProcessed;
         public event EventHandler<LoadSucceededEventArgs> LoadSucceeded;
         public event EventHandler<MessageGeneratedEventArgs> MessageGenerated;
 
+        
         private Dictionary<string, object> _nameValuePairs = new Dictionary<string,object>();
         private List<string> Literal = new List<string>();
         
@@ -65,8 +72,9 @@ namespace Dmsi.Agility.Resource.MatchBuilder
         /// </summary>
         public string Extensions
         {
-            get{return "cls,w,p,i,t";}
-        }
+            set;
+            get;
+        } = "cls,w,p,i,t";
 
         public bool IncludeSurroundingText { get; set; } = false;
 
@@ -102,7 +110,9 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                 Matcher def = serializer.Load(fileName);
                 Nodes = def.Nodes;
                 RegEx = def.RegEx;
-                FirstMatchOnly = def.FirstMatchOnly;   
+                FirstMatchOnly = def.FirstMatchOnly;  
+                Extensions = def.Extensions;
+                SurroundText = def.SurroundText;
                 IncludeSurroundingText = def.IncludeSurroundingText;
             }
             catch { }
@@ -369,12 +379,12 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                     {
                         var i = match.Index;
                         var start = 0; 
-                        var len = s.Length + 100;
+                        var len = s.Length + SurroundText;
 
-                        if (i > 100)
+                        if (i > SurroundText)
                         {
-                            start = i - 100;
-                            len += 100;
+                            start = i - SurroundText;
+                            len += SurroundText;
                         }
                         else
                             len += i;

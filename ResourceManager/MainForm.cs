@@ -11,6 +11,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
 {
     public partial class MainForm : Form
     {
+        private const int SurroundText = 100;
         private Matcher _definition;
         private ListViewColumnSorter _lvwColumnSorter;
 
@@ -22,7 +23,13 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             _lvwColumnSorter = new ListViewColumnSorter();
             this.listView2.ListViewItemSorter = _lvwColumnSorter;
 
-            Application.Idle += new EventHandler(Application_Idle);
+            Application.Idle += Application_Idle;
+            Application.ApplicationExit += Application_ApplicationExit;
+        }
+
+        private void Application_ApplicationExit(object sender, EventArgs e)
+        {
+            Application.Idle -= Application_Idle;
         }
 
         private void Application_Idle(object sender, EventArgs e)
@@ -39,16 +46,22 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             saveAsToolStripMenuItem.Enabled = _definition != null;
             importFilesToolStripMenuItem.Enabled = _definition != null;
             importDirectoryToolStripMenuItem.Enabled = _definition != null;
+            closeToolStripMenuItem.Enabled = _definition != null;
 
             generateResxToolStripMenuItem.Enabled = _definition != null && !stopToolStripButton.Enabled;
             generateToolStripButton.Enabled = generateResxToolStripMenuItem.Enabled;
             cmdGo.Enabled = generateToolStripButton.Enabled;
 
-
             closeToolStripMenuItem.Enabled = _definition != null;
 
             deleteToolStripMenuItem.Enabled = listView1.SelectedItems.Count > 0;
             deleteToolStripButton.Enabled = deleteToolStripMenuItem.Enabled;
+
+            detailsToolStripMenuItem.Checked = listView1.View == View.Details;
+            listToolStripMenuItem1.Checked = listView1.View == View.List;
+            smallIconToolStripMenuItem.Checked = listView1.View == View.SmallIcon;
+            tileToolStripMenuItem.Checked = listView1.View == View.Tile;
+            largeIconToolStripMenuItem.Checked = listView1.View == View.LargeIcon;
         }
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
@@ -61,13 +74,8 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             {
                 try
                 {
-                    _definition = new Matcher(openFileDialog1.FileName);
-                    this.Text = Path.GetFileName(_definition.FileName) + " - File Scan";
-                    toolStripStatusLabel1.Text = _definition.FileName;
-                    txtRegEx.Text = _definition.RegEx;
-                    firstMatchToolStripButton.Checked = _definition.FirstMatchOnly;
-                    surroundTextToolStripButton.Checked = _definition.IncludeSurroundingText;
-
+                    this.Text = Path.GetFileName(openFileDialog1.FileName) + " - File Scan";
+                    CreateDefinition();
                     listView1.Items.Clear();
 
                     foreach (ResourceNode node in _definition.Nodes)
@@ -77,9 +85,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
                             ListViewItem item;
 
                             if (node.IsFolder)
-                            {
                                 item = new ListViewItem(node.Name, "#FOLDER#");
-                            }
                             else
                             {
                                 AddToImageList(node.Name, node.Value);
@@ -105,6 +111,19 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             }
         }
 
+        private void CreateDefinition()
+        {
+            _definition = new Matcher(openFileDialog1.FileName);
+
+            toolStripStatusLabel1.Text = _definition.FileName;
+            txtRegEx.Text = _definition.RegEx;
+            txtExt.Text = _definition.Extensions;
+            firstMatchToolStripButton.Checked = _definition.FirstMatchOnly;
+            surroundTextToolStripButton.Checked = _definition.IncludeSurroundingText;
+            charsToolStripTextBox.Text = _definition.SurroundText.ToString();
+            _definition.IsDirty = false;
+        }
+
         private void newToolStripMenuItem_Click(object sender, EventArgs e)
         {
             closeToolStripMenuItem_Click(null, null);
@@ -112,6 +131,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             _definition = new Matcher();
             _definition.IsDirty = true;
             txtRegEx.Text = "";
+            txtExt.Text = "";
             firstMatchToolStripButton.Checked = true;
             this.Text = _definition.FileName + " - File Scan";
             toolStripStatusLabel1.Text = _definition.FileName;
@@ -119,7 +139,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
 
         private void saveToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (_definition.FileName.Equals("untitled.rgex", StringComparison.CurrentCultureIgnoreCase))
+            if (Path.GetFileName(_definition.FileName).Equals("untitled.rgex", StringComparison.CurrentCultureIgnoreCase))
             {
                 saveFileDialog1.FileName = _definition.FileName;
 
@@ -132,17 +152,30 @@ namespace Dmsi.Agility.Resource.MatchBuilder
 
         private void SaveDefinition(string fileName)
         {
+            AssignDefinition();
+            _definition.Save(fileName);
+            this.Text = Path.GetFileName(_definition.FileName) + " - File Scan";
+            toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
+        }
+
+        private void AssignDefinition()
+        {
             _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
             _definition.IncludeSurroundingText = firstMatchToolStripButton.Checked;
+            
+            int number;
+            if (!Int32.TryParse(charsToolStripTextBox.Text, out number))
+                number = SurroundText;
+            _definition.SurroundText = number;
+
             _definition.RegEx = txtRegEx.Text;
-            _definition.Save(fileName);
-            this.Text = _definition.FileName + " - File Scan";
-            toolStripStatusLabel1.Text = Path.GetFullPath(_definition.FileName);
+            _definition.Extensions = txtExt.Text;
+            _definition.IsDirty = false;
         }
 
         private void importFilesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            openFileDialog1.FileName = "*.cls;*.w;*.p;*.i;*.t";
+            openFileDialog1.FileName = "*.*";
             openFileDialog1.Filter = "All files (*.*)|*.*";
             openFileDialog1.Multiselect = true;
 
@@ -224,65 +257,28 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             }
         }
 
-        private void fileToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
-        {
-            newToolStripMenuItem.Enabled = true;
-            openToolStripMenuItem.Enabled = true;
-            saveToolStripMenuItem.Enabled = _definition != null && _definition.IsDirty;
-            saveAsToolStripMenuItem.Enabled = _definition != null;
-            importFilesToolStripMenuItem.Enabled = _definition != null;
-            importDirectoryToolStripMenuItem.Enabled = _definition != null;
-            generateResxToolStripMenuItem.Enabled = _definition != null;
-            closeToolStripMenuItem.Enabled = _definition != null;
-        }
-
         private void detailsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            listToolStripMenuItem1.Checked = false;
-            largeIconToolStripMenuItem.Checked = false;
-            smallIconToolStripMenuItem.Checked = false;
-            tileToolStripMenuItem.Checked = false;
-
             listView1.View = View.Details;
         }
 
         private void largeIconToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            detailsToolStripMenuItem.Checked = false;
-            listToolStripMenuItem1.Checked = false;
-            smallIconToolStripMenuItem.Checked = false;
-            tileToolStripMenuItem.Checked = false;
-
             listView1.View = View.LargeIcon;
         }
 
         private void smallIconToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            detailsToolStripMenuItem.Checked = false;
-            listToolStripMenuItem1.Checked = false;
-            largeIconToolStripMenuItem.Checked = false;
-            tileToolStripMenuItem.Checked = false;
-
             listView1.View = View.SmallIcon;
         }
 
         private void listToolStripMenuItem1_Click(object sender, EventArgs e)
         {
-            detailsToolStripMenuItem.Checked = false;
-            largeIconToolStripMenuItem.Checked = false;
-            smallIconToolStripMenuItem.Checked = false;
-            tileToolStripMenuItem.Checked = false;
-
             listView1.View = View.Details;
         }
 
         private void tileToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            detailsToolStripMenuItem.Checked = false;
-            largeIconToolStripMenuItem.Checked = false;
-            smallIconToolStripMenuItem.Checked = false;
-            listToolStripMenuItem1.Checked = false;
-
             listView1.View = View.Tile;
         }
 
@@ -337,9 +333,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             
             if (saveFileDialog1.ShowDialog() == DialogResult.OK)
             {
-                _definition.RegEx = txtRegEx.Text;
-                _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
-                _definition.IncludeSurroundingText = firstMatchToolStripButton.Checked; 
+                AssignDefinition();
                 _definition.Save(saveFileDialog1.FileName);
                 this.Text = _definition.FileName + " - File Scan";
             }
@@ -408,9 +402,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
 
         private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
         {
-            _definition.FirstMatchOnly = firstMatchToolStripButton.Checked;
-            _definition.IncludeSurroundingText = surroundTextToolStripButton.Checked;
-            _definition.RegEx = txtRegEx.Text;
+            AssignDefinition();
             string location = _definition.ParseFiles();
             e.Result = location;
 
@@ -477,13 +469,12 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             if (backgroundWorker1.IsBusy)
             {
                 _definition.Cancelled = true;
-            }
+            }            
         }
 
         private void stopToolStripButton_Click(object sender, EventArgs e)
         {
             stopToolStripButton.Enabled = false;
-
             _definition.Cancelled = true;
         }
 
@@ -494,6 +485,7 @@ namespace Dmsi.Agility.Resource.MatchBuilder
             foreach (ListViewItem item in items)
             {
                 richTextBox2.Clear();
+                richTextBox2.AppendText($"{item.SubItems[1].Text}\r\n\r\n");
 
                 List<string> result = (List<string>)item.Tag;
                 foreach(string s in result)
@@ -541,12 +533,33 @@ namespace Dmsi.Agility.Resource.MatchBuilder
 
         private void firstMatchToolStripButton_Click(object sender, EventArgs e)
         {
-            _definition.IsDirty = true;
+            SetAsDirty();
+        }
+
+        private void SetAsDirty()
+        {
+            if (_definition != null)
+                _definition.IsDirty = true;
         }
 
         private void surroundTextToolStripButton_Click(object sender, EventArgs e)
         {
-            _definition.IsDirty = true;
+            SetAsDirty();
+        }
+
+        private void txtRegEx_TextChanged(object sender, EventArgs e)
+        {
+            SetAsDirty();
+        }
+
+        private void txtExt_TextChanged(object sender, EventArgs e)
+        {
+            SetAsDirty();
+        }
+
+        private void charsToolStripTextBox_TextChanged(object sender, EventArgs e)
+        {
+            SetAsDirty();
         }
     }
     public class ParseUserState
